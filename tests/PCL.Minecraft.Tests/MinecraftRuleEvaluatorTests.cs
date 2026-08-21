@@ -16,7 +16,7 @@ public sealed class MinecraftRuleEvaluatorTests
         Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed(null, context));
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow(PlatformOperatingSystem.Windows, "windows")]
     [DataRow(PlatformOperatingSystem.MacOS, "osx")]
     [DataRow(PlatformOperatingSystem.Linux, "linux")]
