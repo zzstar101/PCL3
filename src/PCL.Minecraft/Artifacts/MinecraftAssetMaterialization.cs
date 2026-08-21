@@ -3,6 +3,7 @@ namespace PCL3.Minecraft.Artifacts;
 public sealed record MinecraftAssetMaterialization(
     string SourcePath,
     string TargetPath,
+    string TargetRoot,
     string LogicalName);
 
 public sealed record MinecraftAssetMaterializationPlan(
@@ -20,9 +21,13 @@ public static class MinecraftAssetMaterializationPlanner
 
         var minecraftRoot = Path.GetFullPath(minecraftDirectory);
         var objectRoot = Path.Combine(minecraftRoot, "assets", "objects");
+        var virtualRoot = string.IsNullOrWhiteSpace(assetsId)
+            ? null
+            : Path.Combine(minecraftRoot, "assets", "virtual", assetsId);
+        var resourcesRoot = Path.Combine(minecraftRoot, "resources");
         var files = new List<MinecraftAssetMaterialization>();
 
-        if (assetIndex.Virtual && string.IsNullOrWhiteSpace(assetsId))
+        if (assetIndex.Virtual && virtualRoot is null)
         {
             throw new InvalidDataException("A virtual asset index requires an assets id.");
         }
@@ -35,9 +40,8 @@ public static class MinecraftAssetMaterializationPlanner
             {
                 files.Add(new MinecraftAssetMaterialization(
                     source,
-                    ResolveLogicalTarget(
-                        Path.Combine(minecraftRoot, "assets", "virtual", assetsId!),
-                        asset.Name),
+                    ResolveLogicalTarget(virtualRoot!, asset.Name),
+                    Path.GetFullPath(virtualRoot!),
                     asset.Name));
             }
 
@@ -45,7 +49,8 @@ public static class MinecraftAssetMaterializationPlanner
             {
                 files.Add(new MinecraftAssetMaterialization(
                     source,
-                    ResolveLogicalTarget(Path.Combine(minecraftRoot, "resources"), asset.Name),
+                    ResolveLogicalTarget(resourcesRoot, asset.Name),
+                    Path.GetFullPath(resourcesRoot),
                     asset.Name));
             }
         }
@@ -98,9 +103,21 @@ public static class MinecraftAssetMaterializer
                     file.SourcePath);
             }
 
+            Directory.CreateDirectory(file.TargetRoot);
+            EnsureNotReparsePoint(file.TargetRoot);
+
             var directory = Path.GetDirectoryName(file.TargetPath) ??
                 throw new InvalidDataException($"Asset target '{file.TargetPath}' has no parent directory.");
+            EnsureSafeDirectoryChain(file.TargetRoot, directory);
             Directory.CreateDirectory(directory);
+            EnsureSafeDirectoryChain(file.TargetRoot, directory);
+
+            if ((File.Exists(file.TargetPath) || Directory.Exists(file.TargetPath)) &&
+                (File.GetAttributes(file.TargetPath) & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new InvalidDataException(
+                    $"Asset materialization refuses to replace reparse-point target '{file.TargetPath}'.");
+            }
 
             var temporary = file.TargetPath + $".pcl3-{Guid.NewGuid():N}.tmp";
             try
@@ -132,6 +149,45 @@ public static class MinecraftAssetMaterializer
                     File.Delete(temporary);
                 }
             }
+        }
+    }
+
+    private static void EnsureSafeDirectoryChain(string root, string directory)
+    {
+        var relative = Path.GetRelativePath(root, directory);
+        if (Path.IsPathRooted(relative) ||
+            relative.Equals("..", StringComparison.Ordinal) ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Asset materialization target '{directory}' escapes root '{root}'.");
+        }
+
+        var current = root;
+        if (relative is ".")
+        {
+            EnsureNotReparsePoint(current);
+            return;
+        }
+
+        foreach (var segment in relative.Split(
+                     Path.DirectorySeparatorChar,
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            if (Directory.Exists(current))
+            {
+                EnsureNotReparsePoint(current);
+            }
+        }
+    }
+
+    private static void EnsureNotReparsePoint(string directory)
+    {
+        if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new InvalidDataException(
+                $"Asset materialization refuses to traverse reparse-point directory '{directory}'.");
         }
     }
 }
