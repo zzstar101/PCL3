@@ -8,11 +8,26 @@ public sealed record MinecraftArgument(
     IReadOnlyList<string> Values,
     IReadOnlyList<MinecraftRule> Rules);
 
+public sealed record MinecraftDownloadArtifact(
+    string? Path,
+    string? Url,
+    string? Sha1,
+    long? Size);
+
+public sealed record MinecraftLibraryDownloads(
+    MinecraftDownloadArtifact? Artifact,
+    IReadOnlyDictionary<string, MinecraftDownloadArtifact> Classifiers);
+
+public sealed record MinecraftLibraryExtract(
+    IReadOnlyList<string> Exclude);
+
 public sealed record MinecraftLibrary(
     string Name,
     string? RepositoryUrl,
     IReadOnlyList<MinecraftRule> Rules,
-    IReadOnlyDictionary<string, string> Natives);
+    IReadOnlyDictionary<string, string> Natives,
+    MinecraftLibraryDownloads? Downloads = null,
+    MinecraftLibraryExtract? Extract = null);
 
 public sealed record MinecraftVersionMetadata(
     string Id,
