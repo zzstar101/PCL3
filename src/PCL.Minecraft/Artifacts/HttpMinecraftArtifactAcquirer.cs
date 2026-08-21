@@ -195,50 +195,52 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
 
         try
         {
-            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken)
-                .ConfigureAwait(false);
-            await using var output = new FileStream(
+            using var hash = artifact.Sha1 is null
+                ? null
+                : IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+            long total = 0;
+
+            await using (var input = await response.Content.ReadAsStreamAsync(cancellationToken)
+                             .ConfigureAwait(false))
+            await using (var output = new FileStream(
                 temporaryPath,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 bufferSize: 128 * 1024,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            using var hash = artifact.Sha1 is null
-                ? null
-                : IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-            var buffer = ArrayPool<byte>.Shared.Rent(128 * 1024);
-            long total = 0;
-
-            try
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                while (true)
+                var buffer = ArrayPool<byte>.Shared.Rent(128 * 1024);
+                try
                 {
-                    var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
-                        .ConfigureAwait(false);
-                    if (read == 0)
+                    while (true)
                     {
-                        break;
-                    }
+                        var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
+                            .ConfigureAwait(false);
+                        if (read == 0)
+                        {
+                            break;
+                        }
 
-                    total = checked(total + read);
-                    if (artifact.Size is { } maximumExpected && total > maximumExpected)
-                    {
-                        throw new InvalidDataException(
-                            $"Downloaded size exceeded expected size {maximumExpected}.");
-                    }
+                        total = checked(total + read);
+                        if (artifact.Size is { } maximumExpected && total > maximumExpected)
+                        {
+                            throw new InvalidDataException(
+                                $"Downloaded size exceeded expected size {maximumExpected}.");
+                        }
 
-                    hash?.AppendData(buffer, 0, read);
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
-                        .ConfigureAwait(false);
+                        hash?.AppendData(buffer, 0, read);
+                        await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
+                            .ConfigureAwait(false);
+                    }
                 }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
 
-            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             if (artifact.Size is { } expected && total != expected)
             {
@@ -256,6 +258,8 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
                 }
             }
 
+            // Windows does not allow replacing an open file. Keep the temporary
+            // stream scope above this point so all handles are closed before commit.
             File.Move(temporaryPath, artifact.LocalPath, overwrite: true);
             return finalUri;
         }
