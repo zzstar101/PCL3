@@ -44,7 +44,7 @@ public static class SafeNativeExtractor
 
             var normalizedEntryName = entry.FullName.Replace('\\', '/');
             if (ShouldExclude(normalizedEntryName, archive.Excludes) ||
-                normalizedEntryName.EndsWith('/', StringComparison.Ordinal))
+                normalizedEntryName.EndsWith("/", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -99,7 +99,7 @@ public static class SafeNativeExtractor
 
     private static string GetSafeTargetPath(string destination, string entryName)
     {
-        if (entryName.StartsWith('/', StringComparison.Ordinal) ||
+        if (entryName.StartsWith("/", StringComparison.Ordinal) ||
             entryName.Contains('\0'))
         {
             throw new InvalidDataException($"Unsafe native archive entry '{entryName}'.");
