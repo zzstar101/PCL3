@@ -93,6 +93,65 @@ public sealed class LaunchExecutionTests
     }
 
     [TestMethod]
+    public void LaunchPlanBuilder_ExpandsLegacyMinecraftArgumentsCompatibilityVariables()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var metadata = MinecraftVersionJson.Parse("""
+            {
+              "id": "legacy-test",
+              "type": "old_alpha",
+              "mainClass": "example.LegacyMain",
+              "assets": "legacy",
+              "javaVersion": { "component": "jre-legacy", "majorVersion": 8 },
+              "minecraftArguments": "--username ${auth_player_name} --session ${auth_session} --gameAssets ${game_assets} --assetIndex ${assets_index_name}"
+            }
+            """);
+            var chain = new MinecraftVersionChain(new[] { metadata });
+            var ruleContext = new MinecraftRuleContext(
+                PlatformTarget.Current,
+                "legacy-test",
+                new Dictionary<string, bool>());
+            var java = new JavaRuntimeDescriptor(
+                Path.Combine(root, "java-home"),
+                8,
+                PlatformTarget.Current.Architecture,
+                ExecutablePath: "java-test");
+            var runtime = MinecraftRuntimePlanner.Build(
+                chain,
+                ruleContext,
+                root,
+                Path.Combine(root, "natives"),
+                new[] { java },
+                clientJarPath: Path.Combine(root, "versions", "legacy-test", "legacy-test.jar"));
+            var context = new MinecraftLaunchContext(
+                chain,
+                ruleContext,
+                runtime,
+                new MinecraftSession(
+                    "LegacyPlayer",
+                    "00112233445566778899aabbccddeeff",
+                    "legacy-token"),
+                Path.Combine(root, "game"),
+                JavaExecutableOverride: "java-test");
+
+            var plan = MinecraftLaunchPlanBuilder.Build(context);
+
+            CollectionAssert.Contains(plan.Arguments.ToList(), "LegacyPlayer");
+            CollectionAssert.Contains(plan.Arguments.ToList(), "legacy-token");
+            CollectionAssert.Contains(plan.Arguments.ToList(), "legacy");
+            CollectionAssert.Contains(
+                plan.Arguments.ToList(),
+                Path.Combine(root, "assets", "virtual", "legacy"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public void ProcessStartInfoBuilder_PreservesArgumentBoundariesWithoutShell()
     {
         var root = CreateTemporaryDirectory();
@@ -384,6 +443,7 @@ public sealed class LaunchExecutionTests
             WaitCalls++;
             if (waitUntilCancellation)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             }
 
