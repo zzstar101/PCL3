@@ -45,12 +45,13 @@ public static class MinecraftVersionChainResolver
 
             versions.Add(metadata);
 
-            if (string.IsNullOrWhiteSpace(metadata.InheritsFrom))
+            var parentId = metadata.InheritsFrom;
+            if (string.IsNullOrWhiteSpace(parentId))
             {
                 break;
             }
 
-            currentId = metadata.InheritsFrom;
+            currentId = parentId;
         }
 
         return new MinecraftVersionChain(versions);
