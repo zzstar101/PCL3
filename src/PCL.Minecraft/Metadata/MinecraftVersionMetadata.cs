@@ -14,6 +14,16 @@ public sealed record MinecraftDownloadArtifact(
     string? Sha1,
     long? Size);
 
+public sealed record MinecraftVersionDownloads(
+    MinecraftDownloadArtifact? Client);
+
+public sealed record MinecraftAssetIndexReference(
+    string Id,
+    string? Url,
+    string? Sha1,
+    long? Size,
+    long? TotalSize);
+
 public sealed record MinecraftLibraryDownloads(
     MinecraftDownloadArtifact? Artifact,
     IReadOnlyDictionary<string, MinecraftDownloadArtifact> Classifiers);
@@ -38,4 +48,8 @@ public sealed record MinecraftVersionMetadata(
     IReadOnlyList<MinecraftArgument> JvmArguments,
     IReadOnlyList<MinecraftArgument> GameArguments,
     string? LegacyMinecraftArguments,
-    IReadOnlyList<MinecraftLibrary> Libraries);
+    IReadOnlyList<MinecraftLibrary> Libraries,
+    string? Jar = null,
+    string? Assets = null,
+    MinecraftVersionDownloads? Downloads = null,
+    MinecraftAssetIndexReference? AssetIndex = null);

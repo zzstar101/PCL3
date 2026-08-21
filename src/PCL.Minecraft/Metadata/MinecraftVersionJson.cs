@@ -21,10 +21,14 @@ public static class MinecraftVersionJson
         var mainClass = GetOptionalString(root, "mainClass");
         var inheritsFrom = GetOptionalString(root, "inheritsFrom");
         var legacyMinecraftArguments = GetOptionalString(root, "minecraftArguments");
+        var jar = GetOptionalString(root, "jar");
+        var assets = GetOptionalString(root, "assets");
 
         var javaVersion = ParseJavaVersion(root);
         var (jvmArguments, gameArguments) = ParseArguments(root);
         var libraries = ParseLibraries(root);
+        var downloads = ParseVersionDownloads(root);
+        var assetIndex = ParseAssetIndex(root);
 
         return new MinecraftVersionMetadata(
             id,
@@ -35,7 +39,11 @@ public static class MinecraftVersionJson
             jvmArguments,
             gameArguments,
             legacyMinecraftArguments,
-            libraries);
+            libraries,
+            jar,
+            assets,
+            downloads,
+            assetIndex);
     }
 
     private static MinecraftJavaVersion? ParseJavaVersion(JsonElement root)
@@ -52,7 +60,6 @@ public static class MinecraftVersionJson
         }
 
         var component = GetRequiredString(element, "component");
-
         if (!element.TryGetProperty("majorVersion", out var majorVersionElement) ||
             !majorVersionElement.TryGetInt32(out var majorVersion))
         {
@@ -62,9 +69,8 @@ public static class MinecraftVersionJson
         return new MinecraftJavaVersion(component, majorVersion);
     }
 
-    private static (
-        IReadOnlyList<MinecraftArgument> Jvm,
-        IReadOnlyList<MinecraftArgument> Game) ParseArguments(JsonElement root)
+    private static (IReadOnlyList<MinecraftArgument> Jvm, IReadOnlyList<MinecraftArgument> Game)
+        ParseArguments(JsonElement root)
     {
         if (!root.TryGetProperty("arguments", out var argumentsElement) ||
             argumentsElement.ValueKind is JsonValueKind.Null)
@@ -98,7 +104,6 @@ public static class MinecraftVersionJson
         }
 
         var result = new List<MinecraftArgument>();
-
         foreach (var element in arrayElement.EnumerateArray())
         {
             result.Add(ParseArgument(element));
@@ -130,10 +135,7 @@ public static class MinecraftVersionJson
         var values = valueElement.ValueKind switch
         {
             JsonValueKind.String => new[] { valueElement.GetString()! },
-            JsonValueKind.Array => valueElement
-                .EnumerateArray()
-                .Select(ReadArgumentValue)
-                .ToArray(),
+            JsonValueKind.Array => valueElement.EnumerateArray().Select(ReadArgumentValue).ToArray(),
             _ => throw new JsonException(
                 "Conditional Minecraft argument 'value' must be a string or string array.")
         };
@@ -156,6 +158,50 @@ public static class MinecraftVersionJson
         return element.GetString()!;
     }
 
+    private static MinecraftVersionDownloads? ParseVersionDownloads(JsonElement root)
+    {
+        if (!root.TryGetProperty("downloads", out var downloadsElement) ||
+            downloadsElement.ValueKind is JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (downloadsElement.ValueKind is not JsonValueKind.Object)
+        {
+            throw new JsonException("'downloads' must be a JSON object.");
+        }
+
+        MinecraftDownloadArtifact? client = null;
+        if (downloadsElement.TryGetProperty("client", out var clientElement) &&
+            clientElement.ValueKind is not JsonValueKind.Null)
+        {
+            client = ParseDownloadArtifact(clientElement, "downloads.client");
+        }
+
+        return new MinecraftVersionDownloads(client);
+    }
+
+    private static MinecraftAssetIndexReference? ParseAssetIndex(JsonElement root)
+    {
+        if (!root.TryGetProperty("assetIndex", out var element) ||
+            element.ValueKind is JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (element.ValueKind is not JsonValueKind.Object)
+        {
+            throw new JsonException("'assetIndex' must be a JSON object.");
+        }
+
+        return new MinecraftAssetIndexReference(
+            GetRequiredString(element, "id"),
+            GetOptionalString(element, "url"),
+            GetOptionalString(element, "sha1"),
+            GetOptionalNonNegativeInt64(element, "size", "assetIndex.size"),
+            GetOptionalNonNegativeInt64(element, "totalSize", "assetIndex.totalSize"));
+    }
+
     private static IReadOnlyList<MinecraftLibrary> ParseLibraries(JsonElement root)
     {
         if (!root.TryGetProperty("libraries", out var librariesElement) ||
@@ -170,7 +216,6 @@ public static class MinecraftVersionJson
         }
 
         var libraries = new List<MinecraftLibrary>();
-
         foreach (var libraryElement in librariesElement.EnumerateArray())
         {
             if (libraryElement.ValueKind is not JsonValueKind.Object)
@@ -248,23 +293,11 @@ public static class MinecraftVersionJson
             throw new JsonException($"'{propertyPath}' must be a JSON object.");
         }
 
-        long? size = null;
-        if (element.TryGetProperty("size", out var sizeElement) &&
-            sizeElement.ValueKind is not JsonValueKind.Null)
-        {
-            if (!sizeElement.TryGetInt64(out var parsedSize) || parsedSize < 0)
-            {
-                throw new JsonException($"'{propertyPath}.size' must be a non-negative integer.");
-            }
-
-            size = parsedSize;
-        }
-
         return new MinecraftDownloadArtifact(
             GetOptionalString(element, "path"),
             GetOptionalString(element, "url"),
             GetOptionalString(element, "sha1"),
-            size);
+            GetOptionalNonNegativeInt64(element, "size", $"{propertyPath}.size"));
     }
 
     private static MinecraftLibraryExtract? ParseLibraryExtract(JsonElement libraryElement)
@@ -319,13 +352,11 @@ public static class MinecraftVersionJson
         }
 
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
         foreach (var property in nativesElement.EnumerateObject())
         {
             if (property.Value.ValueKind is not JsonValueKind.String)
             {
-                throw new JsonException(
-                    "'libraries[].natives' values must be strings.");
+                throw new JsonException("'libraries[].natives' values must be strings.");
             }
 
             result[property.Name] = property.Value.GetString()!;
@@ -342,7 +373,6 @@ public static class MinecraftVersionJson
         }
 
         var rules = new List<MinecraftRule>();
-
         foreach (var ruleElement in rulesElement.EnumerateArray())
         {
             if (ruleElement.ValueKind is not JsonValueKind.Object)
@@ -354,12 +384,10 @@ public static class MinecraftVersionJson
             {
                 "allow" => MinecraftRuleAction.Allow,
                 "disallow" => MinecraftRuleAction.Disallow,
-                var value => throw new JsonException(
-                    $"Unsupported Minecraft rule action '{value}'.")
+                var value => throw new JsonException($"Unsupported Minecraft rule action '{value}'.")
             };
 
             MinecraftOsRule? os = null;
-
             if (ruleElement.TryGetProperty("os", out var osElement))
             {
                 if (osElement.ValueKind is not JsonValueKind.Object)
@@ -374,7 +402,6 @@ public static class MinecraftVersionJson
             }
 
             IReadOnlyDictionary<string, bool>? features = null;
-
             if (ruleElement.TryGetProperty("features", out var featuresElement))
             {
                 if (featuresElement.ValueKind is not JsonValueKind.Object)
@@ -383,14 +410,11 @@ public static class MinecraftVersionJson
                 }
 
                 var parsedFeatures = new Dictionary<string, bool>();
-
                 foreach (var property in featuresElement.EnumerateObject())
                 {
-                    if (property.Value.ValueKind is not JsonValueKind.True and
-                        not JsonValueKind.False)
+                    if (property.Value.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
                     {
-                        throw new JsonException(
-                            "'rules[].features' values must be booleans.");
+                        throw new JsonException("'rules[].features' values must be booleans.");
                     }
 
                     parsedFeatures[property.Name] = property.Value.GetBoolean();
@@ -405,10 +429,28 @@ public static class MinecraftVersionJson
         return rules;
     }
 
+    private static long? GetOptionalNonNegativeInt64(
+        JsonElement element,
+        string propertyName,
+        string propertyPath)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind is JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (!property.TryGetInt64(out var value) || value < 0)
+        {
+            throw new JsonException($"'{propertyPath}' must be a non-negative integer.");
+        }
+
+        return value;
+    }
+
     private static string GetRequiredString(JsonElement element, string propertyName)
     {
         var value = GetOptionalString(element, propertyName);
-
         return value ?? throw new JsonException(
             $"Required string property '{propertyName}' is missing.");
     }
