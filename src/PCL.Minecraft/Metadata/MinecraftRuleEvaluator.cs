@@ -76,8 +76,18 @@ public static class MinecraftRuleEvaluator
 
         foreach (var (name, expectedValue) in requiredFeatures)
         {
-            if (!actualFeatures.TryGetValue(name, out var actualValue) ||
-                actualValue != expectedValue)
+            if (!actualFeatures.TryGetValue(name, out var actualValue))
+            {
+                // Mojang feature flags are false unless explicitly enabled.
+                if (expectedValue)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (actualValue != expectedValue)
             {
                 return false;
             }
