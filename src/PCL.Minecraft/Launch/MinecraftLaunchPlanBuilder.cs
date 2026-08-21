@@ -42,12 +42,12 @@ public static class MinecraftLaunchPlanBuilder
 
         arguments.Add(mainClass);
 
-        if (!string.IsNullOrWhiteSpace(request.VersionChain.EffectiveLegacyMinecraftArguments))
+        var legacyArguments = request.VersionChain.EffectiveLegacyMinecraftArguments;
+        if (!string.IsNullOrWhiteSpace(legacyArguments))
         {
             AddExpanded(
                 arguments,
-                LegacyMinecraftArgumentTokenizer.Tokenize(
-                    request.VersionChain.EffectiveLegacyMinecraftArguments),
+                LegacyMinecraftArgumentTokenizer.Tokenize(legacyArguments),
                 request);
         }
 
