@@ -91,11 +91,14 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    await DownloadVerifiedAsync(artifact, uri!, cancellationToken).ConfigureAwait(false);
+                    var finalSource = await DownloadVerifiedAsync(
+                        artifact,
+                        uri!,
+                        cancellationToken).ConfigureAwait(false);
                     return new MinecraftArtifactAcquisitionItemResult(
                         artifact,
                         MinecraftArtifactAcquisitionStatus.Downloaded,
-                        uri!.AbsoluteUri);
+                        finalSource.AbsoluteUri);
                 }
                 catch (OperationCanceledException)
                 {
@@ -123,15 +126,20 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
             return false;
         }
 
+        return ValidateTransport(uri, out error);
+    }
+
+    private bool ValidateTransport(Uri uri, out string? error)
+    {
         if (uri.Scheme is not ("https" or "http"))
         {
-            error = $"Artifact source '{source}' uses unsupported scheme '{uri.Scheme}'.";
+            error = $"Artifact source '{uri}' uses unsupported scheme '{uri.Scheme}'.";
             return false;
         }
 
         if (uri.Scheme == "http" && !_options.AllowInsecureHttp)
         {
-            error = $"Artifact source '{source}' uses insecure HTTP and is disabled by policy.";
+            error = $"Artifact source '{uri}' uses insecure HTTP and is disabled by policy.";
             return false;
         }
 
@@ -143,7 +151,7 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
         "Security",
         "CA5350:Do Not Use Weak Cryptographic Algorithms",
         Justification = "Mojang manifests mandate SHA-1 as an artifact integrity/cache identifier; it is not used as a security signature.")]
-    private async Task DownloadVerifiedAsync(
+    private async Task<Uri> DownloadVerifiedAsync(
         MinecraftArtifactRequest artifact,
         Uri source,
         CancellationToken cancellationToken)
@@ -160,6 +168,13 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
                 $"Server returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).",
                 null,
                 response.StatusCode);
+        }
+
+        var finalUri = response.RequestMessage?.RequestUri ?? source;
+        if (!ValidateTransport(finalUri, out var transportError))
+        {
+            throw new InvalidDataException(
+                $"Download redirect violated transport policy: {transportError}");
         }
 
         if (artifact.Size is { } expectedSize &&
@@ -189,7 +204,9 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
                 FileShare.None,
                 bufferSize: 128 * 1024,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+            using var hash = artifact.Sha1 is null
+                ? null
+                : IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
             var buffer = ArrayPool<byte>.Shared.Rent(128 * 1024);
             long total = 0;
 
@@ -211,7 +228,7 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
                             $"Downloaded size exceeded expected size {maximumExpected}.");
                     }
 
-                    hash.AppendData(buffer, 0, read);
+                    hash?.AppendData(buffer, 0, read);
                     await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -231,7 +248,7 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
 
             if (artifact.Sha1 is not null)
             {
-                var actualSha1 = Convert.ToHexStringLower(hash.GetHashAndReset());
+                var actualSha1 = Convert.ToHexStringLower(hash!.GetHashAndReset());
                 if (!string.Equals(actualSha1, artifact.Sha1, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidDataException(
@@ -240,6 +257,7 @@ public sealed class HttpMinecraftArtifactAcquirer : IMinecraftArtifactAcquirer
             }
 
             File.Move(temporaryPath, artifact.LocalPath, overwrite: true);
+            return finalUri;
         }
         finally
         {
