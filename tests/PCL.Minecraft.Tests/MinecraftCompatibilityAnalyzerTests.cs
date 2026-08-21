@@ -56,4 +56,27 @@ public sealed class MinecraftCompatibilityAnalyzerTests
             issue.Code == "java.architecture.emulation" &&
             issue.Severity == CompatibilitySeverity.Warning));
     }
+
+    [TestMethod]
+    public void UnknownArchitecture_DoesNotProduceEmulationWarning()
+    {
+        var runtime = new JavaRuntimeDescriptor(
+            "/java",
+            21,
+            PlatformArchitecture.Unknown,
+            "Test");
+        var requirement = new JavaRequirement(21);
+        var target = new PlatformTarget(
+            PlatformOperatingSystem.Linux,
+            PlatformArchitecture.X64);
+
+        var report = MinecraftCompatibilityAnalyzer.AnalyzeJava(
+            runtime,
+            requirement,
+            target);
+
+        Assert.IsTrue(report.IsCompatible);
+        Assert.IsFalse(report.Issues.Any(issue =>
+            issue.Code == "java.architecture.emulation"));
+    }
 }
