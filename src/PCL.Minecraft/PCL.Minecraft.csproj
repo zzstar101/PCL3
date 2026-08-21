@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../PCL.Core/PCL.Core.csproj" />
+    <ProjectReference Include="../PCL.Platform/PCL.Platform.csproj" />
+  </ItemGroup>
+</Project>

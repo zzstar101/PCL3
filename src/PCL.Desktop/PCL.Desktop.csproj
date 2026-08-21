@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../PCL.Core/PCL.Core.csproj" />
+    <ProjectReference Include="../PCL.Minecraft/PCL.Minecraft.csproj" />
+    <ProjectReference Include="../PCL.Platform/PCL.Platform.csproj" />
+  </ItemGroup>
+</Project>
