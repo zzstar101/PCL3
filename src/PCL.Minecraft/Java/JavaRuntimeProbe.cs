@@ -71,10 +71,9 @@ public static partial class JavaRuntimeProbe
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(output);
 
+        var versionMatch = JavaVersionRegex().Match(output);
         var javaVersion = GetProperty(output, "java.version") ??
-            JavaVersionRegex().Match(output) is { Success: true } match
-                ? match.Groups[1].Value
-                : null;
+            (versionMatch.Success ? versionMatch.Groups[1].Value : null);
 
         if (string.IsNullOrWhiteSpace(javaVersion))
         {
