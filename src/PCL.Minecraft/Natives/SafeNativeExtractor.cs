@@ -73,16 +73,21 @@ public static class SafeNativeExtractor
             var temporaryPath = targetPath + $".pcl3-{Guid.NewGuid():N}.tmp";
             try
             {
-                await using var input = entry.Open();
-                await using var output = new FileStream(
+                await using (var input = entry.Open())
+                await using (var output = new FileStream(
                     temporaryPath,
                     FileMode.CreateNew,
                     FileAccess.Write,
                     FileShare.None,
                     bufferSize: 128 * 1024,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
-                await CopyWithBudgetAsync(input, output, budget, cancellationToken)
-                    .ConfigureAwait(false);
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                {
+                    await CopyWithBudgetAsync(input, output, budget, cancellationToken)
+                        .ConfigureAwait(false);
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                // Windows requires the temporary file handle to be closed before rename.
                 File.Move(temporaryPath, targetPath, overwrite: true);
             }
             finally
