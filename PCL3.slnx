@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PCL.Core/PCL.Core.csproj" />
+    <Project Path="src/PCL.Platform/PCL.Platform.csproj" />
+    <Project Path="src/PCL.Minecraft/PCL.Minecraft.csproj" />
+    <Project Path="src/PCL.Desktop/PCL.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PCL.Minecraft.Tests/PCL.Minecraft.Tests.csproj" />
+  </Folder>
+</Solution>
