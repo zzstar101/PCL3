@@ -34,6 +34,48 @@ public sealed class MinecraftVersionChain
         Versions.Select(version => version.LegacyMinecraftArguments)
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
+    public MinecraftAssetIndexReference? EffectiveAssetIndex =>
+        Versions.Select(version => version.AssetIndex).FirstOrDefault(value => value is not null);
+
+    public string? EffectiveAssetsId =>
+        Versions.Select(version => version.Assets).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ??
+        EffectiveAssetIndex?.Id;
+
+    public string EffectiveClientJarVersionId
+    {
+        get
+        {
+            var explicitJar = Versions
+                .Select(version => version.Jar)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+            if (!string.IsNullOrWhiteSpace(explicitJar))
+            {
+                return explicitJar;
+            }
+
+            return Versions.FirstOrDefault(version => version.Downloads?.Client is not null)?.Id ?? Root.Id;
+        }
+    }
+
+    public MinecraftDownloadArtifact? EffectiveClientDownload
+    {
+        get
+        {
+            var jarVersionId = EffectiveClientJarVersionId;
+            var explicitJarMetadata = Versions.FirstOrDefault(version =>
+                string.Equals(version.Id, jarVersionId, StringComparison.Ordinal));
+
+            if (explicitJarMetadata?.Downloads?.Client is not null)
+            {
+                return explicitJarMetadata.Downloads.Client;
+            }
+
+            return Versions.Select(version => version.Downloads?.Client)
+                .FirstOrDefault(value => value is not null);
+        }
+    }
+
     public IEnumerable<MinecraftArgument> EnumerateJvmArgumentsChildFirst() =>
         Versions.SelectMany(version => version.JvmArguments);
 
