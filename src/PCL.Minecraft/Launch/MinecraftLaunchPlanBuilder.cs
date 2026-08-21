@@ -11,10 +11,30 @@ public sealed record MinecraftLaunchRequest(
     IReadOnlyList<string>? ExtraJvmArguments = null,
     IReadOnlyList<string>? ExtraGameArguments = null,
     IReadOnlyDictionary<string, string>? EnvironmentVariables = null,
-    bool ThrowOnMissingVariables = true);
+    bool ThrowOnMissingVariables = true)
+{
+    public override string ToString() =>
+        $"MinecraftLaunchRequest(Version={VersionChain.Selected.Id}, JavaExecutable={JavaExecutable}, WorkingDirectory={WorkingDirectory}, Variables=<redacted>, ExtraJvmArguments={ExtraJvmArguments?.Count ?? 0}, ExtraGameArguments={ExtraGameArguments?.Count ?? 0})";
+}
 
 public static class MinecraftLaunchPlanBuilder
 {
+    public static LaunchPlan Build(MinecraftLaunchContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var variables = MinecraftLaunchVariableComposer.Create(context);
+        return Build(new MinecraftLaunchRequest(
+            context.VersionChain,
+            context.RuleContext,
+            MinecraftLaunchVariableComposer.ResolveJavaExecutable(context),
+            Path.GetFullPath(context.GameDirectory),
+            variables,
+            context.ExtraJvmArguments,
+            context.ExtraGameArguments,
+            context.EnvironmentVariables));
+    }
+
     public static LaunchPlan Build(MinecraftLaunchRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -66,7 +86,7 @@ public static class MinecraftLaunchPlanBuilder
 
         return new LaunchPlan(
             request.JavaExecutable,
-            request.WorkingDirectory,
+            Path.GetFullPath(request.WorkingDirectory),
             arguments,
             environment);
     }
