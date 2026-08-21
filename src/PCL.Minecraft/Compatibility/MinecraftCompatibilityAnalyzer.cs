@@ -38,7 +38,9 @@ public static class MinecraftCompatibilityAnalyzer
                 CompatibilitySeverity.Error,
                 $"Java architecture {runtime.Architecture} does not match required architecture {requiredArchitecture}."));
         }
-        else if (runtime.Architecture != target.Architecture)
+        else if (runtime.Architecture is not PlatformArchitecture.Unknown &&
+                 target.Architecture is not PlatformArchitecture.Unknown &&
+                 runtime.Architecture != target.Architecture)
         {
             issues.Add(new CompatibilityIssue(
                 "java.architecture.emulation",
