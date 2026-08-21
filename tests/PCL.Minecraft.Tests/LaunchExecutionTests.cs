@@ -132,19 +132,16 @@ public sealed class LaunchExecutionTests
         var root = CreateTemporaryDirectory();
         try
         {
-            var (chain, ruleContext, runtime) = CreateRuntime(root, includeAssetIndex: false, includeClientDownload: true);
+            var (chain, ruleContext, runtime) = CreateRuntime(
+                root,
+                includeAssetIndex: false,
+                includeClientDownload: true);
             var failingAcquirer = new FailingArtifactAcquirer();
             var executor = new CountingProcessExecutor();
             var pipeline = new MinecraftLaunchPipeline(
                 new MinecraftPreparationService(failingAcquirer),
                 executor);
-            var context = new MinecraftLaunchContext(
-                chain,
-                ruleContext,
-                runtime,
-                MinecraftSession.CreateOffline("Player", Guid.Parse("00112233-4455-6677-8899-aabbccddeeff")),
-                Path.Combine(root, "game"),
-                JavaExecutableOverride: "java-test");
+            var context = CreateOfflineContext(root, chain, ruleContext, runtime);
 
             await using var result = await pipeline.PrepareAndStartAsync(context);
 
@@ -169,13 +166,7 @@ public sealed class LaunchExecutionTests
             var pipeline = new MinecraftLaunchPipeline(
                 new MinecraftPreparationService(new SuccessfulArtifactAcquirer()),
                 executor);
-            var context = new MinecraftLaunchContext(
-                chain,
-                ruleContext,
-                runtime,
-                MinecraftSession.CreateOffline("Player", Guid.Parse("00112233-4455-6677-8899-aabbccddeeff")),
-                Path.Combine(root, "game"),
-                JavaExecutableOverride: "java-test");
+            var context = CreateOfflineContext(root, chain, ruleContext, runtime);
 
             await using var result = await pipeline.PrepareAndStartAsync(context);
 
@@ -190,6 +181,81 @@ public sealed class LaunchExecutionTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [TestMethod]
+    public async Task Pipeline_RunToExitReturnsProcessExitCode()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var (chain, ruleContext, runtime) = CreateRuntime(root, includeAssetIndex: false);
+            var process = new FakeRunningProcess(exitCode: 17);
+            var executor = new CountingProcessExecutor(process);
+            var pipeline = new MinecraftLaunchPipeline(
+                new MinecraftPreparationService(new SuccessfulArtifactAcquirer()),
+                executor);
+            var context = CreateOfflineContext(root, chain, ruleContext, runtime);
+
+            var result = await pipeline.RunToExitAsync(context);
+
+            Assert.IsTrue(result.Started);
+            Assert.AreEqual(17, result.ExitCode);
+            Assert.AreEqual(1, executor.StartCalls);
+            Assert.AreEqual(1, process.WaitCalls);
+            Assert.AreEqual(0, process.TerminateCalls);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Pipeline_CancellationTerminatesProcessExactlyOnceWhenEnabled()
+    {
+        var root = CreateTemporaryDirectory();
+        try
+        {
+            var (chain, ruleContext, runtime) = CreateRuntime(root, includeAssetIndex: false);
+            var process = new FakeRunningProcess(waitUntilCancellation: true);
+            var executor = new CountingProcessExecutor(process);
+            var pipeline = new MinecraftLaunchPipeline(
+                new MinecraftPreparationService(new SuccessfulArtifactAcquirer()),
+                executor);
+            var context = CreateOfflineContext(root, chain, ruleContext, runtime);
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+                pipeline.RunToExitAsync(
+                    context,
+                    terminateOnCancellation: true,
+                    cancellationToken: cancellation.Token));
+
+            Assert.AreEqual(1, executor.StartCalls);
+            Assert.AreEqual(1, process.WaitCalls);
+            Assert.AreEqual(1, process.TerminateCalls);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static MinecraftLaunchContext CreateOfflineContext(
+        string root,
+        MinecraftVersionChain chain,
+        MinecraftRuleContext ruleContext,
+        MinecraftRuntimePlan runtime) =>
+        new(
+            chain,
+            ruleContext,
+            runtime,
+            MinecraftSession.CreateOffline(
+                "Player",
+                Guid.Parse("00112233-4455-6677-8899-aabbccddeeff")),
+            Path.Combine(root, "game"),
+            JavaExecutableOverride: "java-test");
 
     private static (MinecraftVersionChain Chain, MinecraftRuleContext RuleContext, MinecraftRuntimePlan Runtime) CreateRuntime(
         string root,
@@ -256,7 +322,8 @@ public sealed class LaunchExecutionTests
         public Task<MinecraftArtifactAcquisitionResult> AcquireAsync(
             MinecraftArtifactAcquisitionPlan plan,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(new MinecraftArtifactAcquisitionResult(Array.Empty<MinecraftArtifactAcquisitionItemResult>()));
+            Task.FromResult(new MinecraftArtifactAcquisitionResult(
+                Array.Empty<MinecraftArtifactAcquisitionItemResult>()));
     }
 
     private sealed class FailingArtifactAcquirer : IMinecraftArtifactAcquirer
@@ -278,6 +345,13 @@ public sealed class LaunchExecutionTests
 
     private sealed class CountingProcessExecutor : IMinecraftProcessExecutor
     {
+        private readonly IMinecraftRunningProcess _process;
+
+        public CountingProcessExecutor(IMinecraftRunningProcess? process = null)
+        {
+            _process = process ?? new FakeRunningProcess();
+        }
+
         public int StartCalls { get; private set; }
 
         public IMinecraftRunningProcess Start(
@@ -285,25 +359,42 @@ public sealed class LaunchExecutionTests
             MinecraftProcessStartOptions? options = null)
         {
             StartCalls++;
-            return new FakeRunningProcess();
+            return _process;
         }
     }
 
-    private sealed class FakeRunningProcess : IMinecraftRunningProcess
+    private sealed class FakeRunningProcess(
+        int exitCode = 0,
+        bool waitUntilCancellation = false) : IMinecraftRunningProcess
     {
         public int Id => 42;
 
-        public bool HasExited => false;
+        public bool HasExited => !waitUntilCancellation;
 
         public TextReader? StandardOutput => null;
 
         public TextReader? StandardError => null;
 
-        public Task<int> WaitForExitAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
+        public int WaitCalls { get; private set; }
 
-        public Task TerminateAsync(CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public int TerminateCalls { get; private set; }
+
+        public async Task<int> WaitForExitAsync(CancellationToken cancellationToken = default)
+        {
+            WaitCalls++;
+            if (waitUntilCancellation)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            return exitCode;
+        }
+
+        public Task TerminateAsync(CancellationToken cancellationToken = default)
+        {
+            TerminateCalls++;
+            return Task.CompletedTask;
+        }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
