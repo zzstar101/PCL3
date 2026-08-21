@@ -1,7 +1,5 @@
 using System.Net;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using PCL3.Minecraft.Accounts.Authentication;
 using PCL3.Minecraft.Accounts.Authentication.Microsoft;
@@ -176,7 +174,7 @@ public sealed class MicrosoftAuthenticationTests
                 """);
             }
 
-            return call - offset switch
+            return (call - offset) switch
             {
                 1 => Json(HttpStatusCode.OK, XboxResponse("xbl-token", "user-hash")),
                 2 => Json(HttpStatusCode.OK, XboxResponse(
