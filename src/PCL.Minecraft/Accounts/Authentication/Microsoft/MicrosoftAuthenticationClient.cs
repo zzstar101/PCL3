@@ -47,6 +47,10 @@ public sealed class MicrosoftAuthenticationClient
             _options.DeviceCodeEndpoint,
             content,
             cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            _options.DeviceCodeEndpoint,
+            MicrosoftAuthenticationStage.DeviceCode);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -56,7 +60,10 @@ public sealed class MicrosoftAuthenticationClient
                 cancellationToken).ConfigureAwait(false);
         }
 
-        using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        using var document = await ReadJsonAsync(
+            response,
+            MicrosoftAuthenticationStage.DeviceCode,
+            cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
         var deviceCode = GetRequiredString(root, "device_code", MicrosoftAuthenticationStage.DeviceCode);
         var userCode = GetRequiredString(root, "user_code", MicrosoftAuthenticationStage.DeviceCode);
@@ -110,10 +117,17 @@ public sealed class MicrosoftAuthenticationClient
             _options.TokenEndpoint,
             content,
             cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            _options.TokenEndpoint,
+            MicrosoftAuthenticationStage.MicrosoftToken);
 
         if (response.IsSuccessStatusCode)
         {
-            using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            using var document = await ReadJsonAsync(
+                response,
+                MicrosoftAuthenticationStage.MicrosoftToken,
+                cancellationToken).ConfigureAwait(false);
             return new MicrosoftDeviceCodePollResult(
                 MicrosoftDeviceCodePollStatus.Authorized,
                 ParseOAuthToken(document.RootElement, fallbackRefreshToken: null));
@@ -121,7 +135,10 @@ public sealed class MicrosoftAuthenticationClient
 
         if (response.StatusCode is HttpStatusCode.BadRequest)
         {
-            using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            using var document = await ReadJsonAsync(
+                response,
+                MicrosoftAuthenticationStage.MicrosoftToken,
+                cancellationToken).ConfigureAwait(false);
             var error = TryGetString(document.RootElement, "error") ?? "unknown_error";
             return new MicrosoftDeviceCodePollResult(
                 error switch
@@ -204,6 +221,10 @@ public sealed class MicrosoftAuthenticationClient
             _options.TokenEndpoint,
             content,
             cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            _options.TokenEndpoint,
+            MicrosoftAuthenticationStage.MicrosoftToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -213,7 +234,10 @@ public sealed class MicrosoftAuthenticationClient
                 cancellationToken).ConfigureAwait(false);
         }
 
-        using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        using var document = await ReadJsonAsync(
+            response,
+            MicrosoftAuthenticationStage.MicrosoftToken,
+            cancellationToken).ConfigureAwait(false);
         return ParseOAuthToken(document.RootElement, refreshToken);
     }
 
@@ -272,6 +296,10 @@ public sealed class MicrosoftAuthenticationClient
         using var request = CreateJsonPost(XboxUserAuthenticationEndpoint, payload);
         request.Headers.TryAddWithoutValidation("x-xbl-contract-version", "1");
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            XboxUserAuthenticationEndpoint,
+            MicrosoftAuthenticationStage.XboxLive);
         if (!response.IsSuccessStatusCode)
         {
             throw await CreateHttpExceptionAsync(
@@ -280,7 +308,10 @@ public sealed class MicrosoftAuthenticationClient
                 cancellationToken).ConfigureAwait(false);
         }
 
-        using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        using var document = await ReadJsonAsync(
+            response,
+            MicrosoftAuthenticationStage.XboxLive,
+            cancellationToken).ConfigureAwait(false);
         return ParseXboxToken(document.RootElement, MicrosoftAuthenticationStage.XboxLive);
     }
 
@@ -302,6 +333,10 @@ public sealed class MicrosoftAuthenticationClient
         using var request = CreateJsonPost(XstsAuthorizationEndpoint, payload);
         request.Headers.TryAddWithoutValidation("x-xbl-contract-version", "1");
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            XstsAuthorizationEndpoint,
+            MicrosoftAuthenticationStage.Xsts);
         if (!response.IsSuccessStatusCode)
         {
             throw await CreateHttpExceptionAsync(
@@ -310,7 +345,10 @@ public sealed class MicrosoftAuthenticationClient
                 cancellationToken).ConfigureAwait(false);
         }
 
-        using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        using var document = await ReadJsonAsync(
+            response,
+            MicrosoftAuthenticationStage.Xsts,
+            cancellationToken).ConfigureAwait(false);
         return ParseXboxToken(document.RootElement, MicrosoftAuthenticationStage.Xsts);
     }
 
@@ -326,6 +364,10 @@ public sealed class MicrosoftAuthenticationClient
 
         using var request = CreateJsonPost(MinecraftLoginEndpoint, payload);
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            MinecraftLoginEndpoint,
+            MicrosoftAuthenticationStage.MinecraftServices);
         if (!response.IsSuccessStatusCode)
         {
             throw await CreateHttpExceptionAsync(
@@ -334,7 +376,10 @@ public sealed class MicrosoftAuthenticationClient
                 cancellationToken).ConfigureAwait(false);
         }
 
-        using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        using var document = await ReadJsonAsync(
+            response,
+            MicrosoftAuthenticationStage.MinecraftServices,
+            cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
         return new MinecraftAccessToken(
             GetRequiredString(root, "access_token", MicrosoftAuthenticationStage.MinecraftServices),
@@ -349,6 +394,10 @@ public sealed class MicrosoftAuthenticationClient
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", minecraftAccessToken);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        ValidateResponseEndpoint(
+            response,
+            MinecraftProfileEndpoint,
+            MicrosoftAuthenticationStage.MinecraftProfile);
         if (!response.IsSuccessStatusCode)
         {
             throw await CreateHttpExceptionAsync(
@@ -357,7 +406,10 @@ public sealed class MicrosoftAuthenticationClient
                 cancellationToken).ConfigureAwait(false);
         }
 
-        using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+        using var document = await ReadJsonAsync(
+            response,
+            MicrosoftAuthenticationStage.MinecraftProfile,
+            cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
         return new MinecraftProfile(
             GetRequiredString(root, "id", MicrosoftAuthenticationStage.MinecraftProfile),
@@ -418,6 +470,7 @@ public sealed class MicrosoftAuthenticationClient
 
     private static async Task<JsonDocument> ReadJsonAsync(
         HttpResponseMessage response,
+        MicrosoftAuthenticationStage stage,
         CancellationToken cancellationToken)
     {
         try
@@ -431,9 +484,10 @@ public sealed class MicrosoftAuthenticationClient
         catch (JsonException exception)
         {
             throw new MicrosoftAuthenticationException(
-                MicrosoftAuthenticationStage.MinecraftServices,
+                stage,
                 "Authentication endpoint returned malformed JSON.",
                 response.StatusCode,
+                errorCode: "malformed_json",
                 innerException: exception);
         }
     }
@@ -446,7 +500,8 @@ public sealed class MicrosoftAuthenticationClient
         string? errorCode = null;
         try
         {
-            using var document = await ReadJsonAsync(response, cancellationToken).ConfigureAwait(false);
+            using var document = await ReadJsonAsync(response, stage, cancellationToken)
+                .ConfigureAwait(false);
             errorCode = TryGetString(document.RootElement, "error") ??
                 TryGetInt64(document.RootElement, "XErr")?.ToString(
                     System.Globalization.CultureInfo.InvariantCulture);
@@ -464,6 +519,26 @@ public sealed class MicrosoftAuthenticationClient
             $"Authentication request failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).{suffix}",
             response.StatusCode,
             errorCode);
+    }
+
+    private static void ValidateResponseEndpoint(
+        HttpResponseMessage response,
+        Uri expectedEndpoint,
+        MicrosoftAuthenticationStage stage)
+    {
+        var actual = response.RequestMessage?.RequestUri;
+        if (actual is null ||
+            !string.Equals(actual.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(actual.Host, expectedEndpoint.Host, StringComparison.OrdinalIgnoreCase) ||
+            actual.Port != expectedEndpoint.Port ||
+            !string.Equals(actual.AbsolutePath, expectedEndpoint.AbsolutePath, StringComparison.Ordinal))
+        {
+            throw new MicrosoftAuthenticationException(
+                stage,
+                "Authentication response came from an unexpected endpoint or redirect target.",
+                response.StatusCode,
+                errorCode: "unexpected_endpoint");
+        }
     }
 
     private static string GetRequiredString(
