@@ -184,15 +184,125 @@ public static class MinecraftVersionJson
                 ? ParseRules(rulesElement)
                 : Array.Empty<MinecraftRule>();
             var natives = ParseNatives(libraryElement);
+            var downloads = ParseLibraryDownloads(libraryElement);
+            var extract = ParseLibraryExtract(libraryElement);
 
             libraries.Add(new MinecraftLibrary(
                 name,
                 repositoryUrl,
                 rules,
-                natives));
+                natives,
+                downloads,
+                extract));
         }
 
         return libraries;
+    }
+
+    private static MinecraftLibraryDownloads? ParseLibraryDownloads(JsonElement libraryElement)
+    {
+        if (!libraryElement.TryGetProperty("downloads", out var downloadsElement) ||
+            downloadsElement.ValueKind is JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (downloadsElement.ValueKind is not JsonValueKind.Object)
+        {
+            throw new JsonException("'libraries[].downloads' must be a JSON object.");
+        }
+
+        MinecraftDownloadArtifact? artifact = null;
+        if (downloadsElement.TryGetProperty("artifact", out var artifactElement) &&
+            artifactElement.ValueKind is not JsonValueKind.Null)
+        {
+            artifact = ParseDownloadArtifact(artifactElement, "libraries[].downloads.artifact");
+        }
+
+        var classifiers = new Dictionary<string, MinecraftDownloadArtifact>(StringComparer.Ordinal);
+        if (downloadsElement.TryGetProperty("classifiers", out var classifiersElement) &&
+            classifiersElement.ValueKind is not JsonValueKind.Null)
+        {
+            if (classifiersElement.ValueKind is not JsonValueKind.Object)
+            {
+                throw new JsonException("'libraries[].downloads.classifiers' must be a JSON object.");
+            }
+
+            foreach (var classifier in classifiersElement.EnumerateObject())
+            {
+                classifiers[classifier.Name] = ParseDownloadArtifact(
+                    classifier.Value,
+                    $"libraries[].downloads.classifiers.{classifier.Name}");
+            }
+        }
+
+        return new MinecraftLibraryDownloads(artifact, classifiers);
+    }
+
+    private static MinecraftDownloadArtifact ParseDownloadArtifact(
+        JsonElement element,
+        string propertyPath)
+    {
+        if (element.ValueKind is not JsonValueKind.Object)
+        {
+            throw new JsonException($"'{propertyPath}' must be a JSON object.");
+        }
+
+        long? size = null;
+        if (element.TryGetProperty("size", out var sizeElement) &&
+            sizeElement.ValueKind is not JsonValueKind.Null)
+        {
+            if (!sizeElement.TryGetInt64(out var parsedSize) || parsedSize < 0)
+            {
+                throw new JsonException($"'{propertyPath}.size' must be a non-negative integer.");
+            }
+
+            size = parsedSize;
+        }
+
+        return new MinecraftDownloadArtifact(
+            GetOptionalString(element, "path"),
+            GetOptionalString(element, "url"),
+            GetOptionalString(element, "sha1"),
+            size);
+    }
+
+    private static MinecraftLibraryExtract? ParseLibraryExtract(JsonElement libraryElement)
+    {
+        if (!libraryElement.TryGetProperty("extract", out var extractElement) ||
+            extractElement.ValueKind is JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (extractElement.ValueKind is not JsonValueKind.Object)
+        {
+            throw new JsonException("'libraries[].extract' must be a JSON object.");
+        }
+
+        if (!extractElement.TryGetProperty("exclude", out var excludeElement) ||
+            excludeElement.ValueKind is JsonValueKind.Null)
+        {
+            return new MinecraftLibraryExtract(Array.Empty<string>());
+        }
+
+        if (excludeElement.ValueKind is not JsonValueKind.Array)
+        {
+            throw new JsonException("'libraries[].extract.exclude' must be a JSON array.");
+        }
+
+        var excludes = new List<string>();
+        foreach (var item in excludeElement.EnumerateArray())
+        {
+            if (item.ValueKind is not JsonValueKind.String)
+            {
+                throw new JsonException("'libraries[].extract.exclude' values must be strings.");
+            }
+
+            excludes.Add(item.GetString()!);
+        }
+
+        return new MinecraftLibraryExtract(excludes);
     }
 
     private static IReadOnlyDictionary<string, string> ParseNatives(JsonElement libraryElement)
