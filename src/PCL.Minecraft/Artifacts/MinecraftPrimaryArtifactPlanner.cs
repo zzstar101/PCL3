@@ -90,7 +90,11 @@ public static class MinecraftPrimaryArtifactPlanner
     private static IReadOnlyList<MinecraftArtifactRequest> Deduplicate(
         IEnumerable<MinecraftArtifactRequest> artifacts)
     {
-        var result = new Dictionary<string, MinecraftArtifactRequest>(StringComparer.OrdinalIgnoreCase);
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var result = new Dictionary<string, MinecraftArtifactRequest>(pathComparer);
+
         foreach (var artifact in artifacts)
         {
             if (!result.TryGetValue(artifact.LocalPath, out var existing))
