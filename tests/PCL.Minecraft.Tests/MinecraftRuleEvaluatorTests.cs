@@ -129,6 +129,50 @@ public sealed class MinecraftRuleEvaluatorTests
         Assert.IsFalse(MinecraftRuleEvaluator.IsAllowed(requiresTrue, context));
     }
 
+    [TestMethod]
+    public void MultipleRequiredFeatures_PartialMismatch_DoesNotMatch()
+    {
+        var context = new MinecraftRuleContext(
+            new PlatformTarget(PlatformOperatingSystem.Linux, PlatformArchitecture.X64),
+            "1.0",
+            new Dictionary<string, bool>
+            {
+                ["is_demo_user"] = true,
+                ["has_custom_resolution"] = false
+            });
+        MinecraftRule[] rules =
+        [
+            new(
+                MinecraftRuleAction.Allow,
+                Features: new Dictionary<string, bool>
+                {
+                    ["is_demo_user"] = true,
+                    ["has_custom_resolution"] = true
+                })
+        ];
+
+        Assert.IsFalse(MinecraftRuleEvaluator.IsAllowed(rules, context));
+    }
+
+    [TestMethod]
+    public void EmptyOrNullFeatureRequirements_HaveNoConstraints()
+    {
+        var context = CreateContext(PlatformOperatingSystem.Linux);
+        MinecraftRule[] emptyFeatures =
+        [
+            new(
+                MinecraftRuleAction.Allow,
+                Features: new Dictionary<string, bool>())
+        ];
+        MinecraftRule[] nullFeatures =
+        [
+            new(MinecraftRuleAction.Allow, Features: null)
+        ];
+
+        Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed(emptyFeatures, context));
+        Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed(nullFeatures, context));
+    }
+
     private static MinecraftRuleContext CreateContext(PlatformOperatingSystem operatingSystem) =>
         new(
             new PlatformTarget(operatingSystem, PlatformArchitecture.X64),
