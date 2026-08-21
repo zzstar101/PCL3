@@ -13,17 +13,23 @@ public sealed class MinecraftRuleEvaluatorTests
         var context = CreateContext(PlatformOperatingSystem.Linux);
 
         Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed([], context));
+        Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed(null, context));
     }
 
-    [TestMethod]
-    public void MatchingOperatingSystemRule_Allows()
+    [DataTestMethod]
+    [DataRow(PlatformOperatingSystem.Windows, "windows")]
+    [DataRow(PlatformOperatingSystem.MacOS, "osx")]
+    [DataRow(PlatformOperatingSystem.Linux, "linux")]
+    public void MatchingOperatingSystemRule_Allows(
+        PlatformOperatingSystem operatingSystem,
+        string mojangName)
     {
-        var context = CreateContext(PlatformOperatingSystem.Windows);
+        var context = CreateContext(operatingSystem);
         MinecraftRule[] rules =
         [
             new(
                 MinecraftRuleAction.Allow,
-                new MinecraftOsRule(Name: "windows"))
+                new MinecraftOsRule(Name: mojangName))
         ];
 
         Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed(rules, context));
@@ -33,6 +39,20 @@ public sealed class MinecraftRuleEvaluatorTests
     public void NonMatchingOperatingSystemRule_DoesNotAllow()
     {
         var context = CreateContext(PlatformOperatingSystem.Linux);
+        MinecraftRule[] rules =
+        [
+            new(
+                MinecraftRuleAction.Allow,
+                new MinecraftOsRule(Name: "windows"))
+        ];
+
+        Assert.IsFalse(MinecraftRuleEvaluator.IsAllowed(rules, context));
+    }
+
+    [TestMethod]
+    public void UnknownOperatingSystem_DoesNotMatchKnownOperatingSystemRule()
+    {
+        var context = CreateContext(PlatformOperatingSystem.Unknown);
         MinecraftRule[] rules =
         [
             new(
@@ -80,6 +100,33 @@ public sealed class MinecraftRuleEvaluatorTests
         ];
 
         Assert.IsFalse(MinecraftRuleEvaluator.IsAllowed(rules, context));
+    }
+
+    [TestMethod]
+    public void MissingFeature_IsTreatedAsFalse()
+    {
+        var context = CreateContext(PlatformOperatingSystem.Linux);
+        MinecraftRule[] requiresFalse =
+        [
+            new(
+                MinecraftRuleAction.Allow,
+                Features: new Dictionary<string, bool>
+                {
+                    ["has_custom_resolution"] = false
+                })
+        ];
+        MinecraftRule[] requiresTrue =
+        [
+            new(
+                MinecraftRuleAction.Allow,
+                Features: new Dictionary<string, bool>
+                {
+                    ["has_custom_resolution"] = true
+                })
+        ];
+
+        Assert.IsTrue(MinecraftRuleEvaluator.IsAllowed(requiresFalse, context));
+        Assert.IsFalse(MinecraftRuleEvaluator.IsAllowed(requiresTrue, context));
     }
 
     private static MinecraftRuleContext CreateContext(PlatformOperatingSystem operatingSystem) =>
