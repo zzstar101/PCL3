@@ -194,9 +194,13 @@ public static class MinecraftLibraryResolver
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar);
         var fullPath = Path.GetFullPath(Path.Combine(librariesDirectory, normalizedRelativePath));
-        var rootWithSeparator = Path.TrimEndingDirectorySeparator(librariesDirectory) + Path.DirectorySeparatorChar;
+        var relativeToRoot = Path.GetRelativePath(librariesDirectory, fullPath);
 
-        if (!fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+        if (Path.IsPathRooted(relativeToRoot) ||
+            relativeToRoot.Equals("..", StringComparison.Ordinal) ||
+            relativeToRoot.StartsWith(
+                ".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"Library path '{relativePath}' escapes the libraries directory.");
